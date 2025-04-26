@@ -4,7 +4,21 @@
     "module": "CommonJS",
     "outDir": "dist",
     "noEmit": false,
-    "jsx": "react"
+    "jsx": "react",
+    "moduleResolution": "node",
+    "target": "ES2018",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "lib": ["ES2018", "dom"]
   },
-  "include": ["server.ts"]
+  "ts-node": {
+    "compilerOptions": {
+      "module": "CommonJS"
+    }
+  },
+  "include": ["server.ts"],
+  "exclude": ["node_modules"]
 } 

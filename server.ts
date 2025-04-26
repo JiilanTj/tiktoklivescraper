@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { WebcastPushConnection } from 'tiktok-live-connector';
+import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,6 +16,8 @@ const io = new Server(httpServer, {
 
 // Map untuk menyimpan koneksi aktif
 const activeConnections = new Map();
+// Map untuk menyimpan gift terakhir per user
+const lastGiftData = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -79,7 +82,29 @@ app.post('/api/tiktok/connect', async (req, res) => {
     });
 
     tiktokLiveConnection.on('gift', data => {
-      console.log('Gift received:', {
+      const now = Date.now();
+      
+      // Buat key unik untuk gift ini
+      const giftKey = `${data.userId}_${data.giftId}_${data.giftName}`;
+      const lastGift = lastGiftData.get(giftKey);
+      
+      // Cek apakah ini gift yang sama dalam interval 5 detik
+      if (lastGift && (now - lastGift.timestamp) < 5000) {
+        console.log('Skipping duplicate gift:', {
+          nickname: data.nickname,
+          giftName: data.giftName,
+          timeSinceLastGift: now - lastGift.timestamp
+        });
+        return;
+      }
+
+      // Update data gift terakhir
+      lastGiftData.set(giftKey, {
+        timestamp: now,
+        data: data
+      });
+
+      console.log('Processing gift:', {
         nickname: data.nickname,
         giftName: data.giftName,
         diamonds: data.diamondCount,
@@ -92,7 +117,10 @@ app.post('/api/tiktok/connect', async (req, res) => {
         giftId: data.giftId,
         giftName: data.giftName,
         diamonds: data.diamondCount,
-        repeatCount: data.repeatCount || 1
+        repeatCount: data.repeatCount || 1,
+        timestamp: now,
+        uuid: uuidv4(),
+        timeSinceLastGift: lastGift ? now - lastGift.timestamp : 0
       });
     });
 
@@ -117,10 +145,23 @@ app.post('/api/tiktok/connect', async (req, res) => {
       io.emit('tiktok-error', { error: error.message });
     });
 
+    // Cleanup untuk lastGiftData setiap 5 menit
+    const cleanupInterval = setInterval(() => {
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      for (const [key, data] of lastGiftData.entries()) {
+        if (data.timestamp < fiveMinutesAgo) {
+          lastGiftData.delete(key);
+        }
+      }
+    }, 5 * 60 * 1000);
+
     tiktokLiveConnection.on('streamEnd', () => {
       console.log(`Stream ended for username: ${username}`);
       io.emit('tiktok-stream-end', { username });
       activeConnections.delete(username);
+      // Clear gift data for this stream
+      lastGiftData.clear();
+      clearInterval(cleanupInterval);
     });
 
     res.json({ success: true, message: 'Connected to TikTok live stream' });

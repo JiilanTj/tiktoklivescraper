@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import Link from 'next/link';
 
 interface ChatMessage {
   username: string;
@@ -17,7 +18,9 @@ interface Gift {
   giftName: string;
   diamonds: number;
   repeatCount: number;
-  timestamp: Date;
+  timestamp: number;
+  uuid: string;
+  timeSinceLastGift: number;
 }
 
 interface Like {
@@ -34,8 +37,10 @@ interface Member {
 
 interface GiftAccumulation {
   username: string;
+  userId: string;
   totalDiamonds: number;
   lastGiftTime: Date;
+  giftCount: number;
 }
 
 interface GiftKey {
@@ -43,6 +48,22 @@ interface GiftKey {
   giftId: string;
   timestamp: number;
 }
+
+interface UserLabel {
+  username: string;
+  userId: string;
+  label: 'Naik ke atas panggung' | 'Baris 1' | 'Baris 2';
+  lastActivity: Date;
+  totalDiamonds?: number;
+  isCommenter?: boolean;
+  isLiker?: boolean;
+}
+
+type LabelPriority = {
+  [K in UserLabel['label']]: number;
+};
+
+const MAX_TOP_USERS = 10;
 
 let socket: Socket;
 
@@ -56,12 +77,61 @@ export default function TikTokLive() {
   const [likes, setLikes] = useState<Like[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [isLive, setIsLive] = useState(false);
+  const [processedUuids, setProcessedUuids] = useState<Set<string>>(new Set());
   const [giftAccumulations, setGiftAccumulations] = useState<GiftAccumulation[]>([]);
+  const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
 
   // Refs untuk auto-scroll
   const chatRef = useRef<HTMLDivElement>(null);
   const giftsRef = useRef<HTMLDivElement>(null);
   const likesRef = useRef<HTMLDivElement>(null);
+
+  // Definisikan label priority di luar fungsi update
+  const labelPriority: LabelPriority = {
+    'Naik ke atas panggung': 0,
+    'Baris 1': 1,
+    'Baris 2': 2
+  } as const;
+
+  const updateUserLabels = (prev: UserLabel[], newUser: UserLabel): UserLabel[] => {
+    // Gabungkan user baru dengan yang lama
+    let updatedUsers = [...prev.filter(u => u.userId !== newUser.userId), newUser];
+    
+    // Filter semua user yang memiliki total diamonds >= 100
+    const eligibleTopUsers = updatedUsers
+      .filter(u => (u.totalDiamonds || 0) >= 100)
+      .sort((a, b) => (b.totalDiamonds || 0) - (a.totalDiamonds || 0));
+    
+    // Ambil 10 user teratas untuk "Naik ke atas panggung"
+    const topTenUsers = eligibleTopUsers.slice(0, MAX_TOP_USERS).map(user => ({
+      ...user,
+      label: 'Naik ke atas panggung' as const
+    }));
+    
+    // Sisanya masuk ke "Baris 1"
+    const demotedUsers = eligibleTopUsers.slice(MAX_TOP_USERS).map(user => ({
+      ...user,
+      label: 'Baris 1' as const
+    }));
+    
+    // User lain yang tidak masuk kategori di atas
+    const otherUsers = updatedUsers.filter(u => (u.totalDiamonds || 0) < 100);
+    
+    // Gabungkan semua user dan sort berdasarkan prioritas label
+    return [...topTenUsers, ...demotedUsers, ...otherUsers]
+      .sort((a, b) => {
+        const aPriority = labelPriority[a.label];
+        const bPriority = labelPriority[b.label];
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+        // Untuk label yang sama, sort berdasarkan diamonds (jika ada) atau waktu
+        if (a.totalDiamonds && b.totalDiamonds) {
+          return b.totalDiamonds - a.totalDiamonds;
+        }
+        return b.lastActivity.getTime() - a.lastActivity.getTime();
+      });
+  };
 
   useEffect(() => {
     // Initialize socket connection
@@ -84,43 +154,97 @@ export default function TikTokLive() {
       if (chatRef.current) {
         chatRef.current.scrollTop = chatRef.current.scrollHeight;
       }
-    });
 
-    socket.on('tiktok-gift', (data) => {
-      // Update gifts list
-      const newGift = {
-        ...data,
-        timestamp: new Date()
-      };
-      
-      setGifts(prev => [...prev, newGift].slice(-50));
-      if (giftsRef.current) {
-        giftsRef.current.scrollTop = giftsRef.current.scrollHeight;
-      }
-
-      // Update gift accumulations
-      setGiftAccumulations(prev => {
-        const existingUser = prev.find(user => user.username === data.username);
-        const giftValue = data.diamonds * (data.repeatCount || 1);
-        
+      // Update user labels for commenters
+      setUserLabels(prev => {
+        const existingUser = prev.find(user => user.userId === data.userId);
         if (existingUser) {
-          return prev.map(user => 
-            user.username === data.username 
-              ? {
-                  ...user,
-                  totalDiamonds: user.totalDiamonds + giftValue,
-                  lastGiftTime: new Date()
-                }
+          return prev.map(user =>
+            user.userId === data.userId
+              ? { ...user, lastActivity: new Date(), isCommenter: true }
               : user
-          ).sort((a, b) => b.totalDiamonds - a.totalDiamonds);
+          );
         } else {
           return [...prev, {
             username: data.username,
-            totalDiamonds: giftValue,
-            lastGiftTime: new Date()
-          }].sort((a, b) => b.totalDiamonds - a.totalDiamonds);
+            userId: data.userId,
+            label: 'Baris 2' as const,
+            lastActivity: new Date(),
+            isCommenter: true
+          }];
         }
       });
+    });
+
+    socket.on('tiktok-gift', (data: Gift) => {
+      if (!processedUuids.has(data.uuid)) {
+        processedUuids.add(data.uuid);
+        
+        // Update gifts list
+        setGifts(prev => [...prev, data].slice(-50));
+        if (giftsRef.current) {
+          giftsRef.current.scrollTop = giftsRef.current.scrollHeight;
+        }
+
+        // Hitung total diamonds untuk gift ini
+        const giftValue = data.diamonds * (data.repeatCount || 1);
+
+        // Update gift accumulations
+        setGiftAccumulations(prev => {
+          const existingUser = prev.find(user => user.userId === data.userId);
+          
+          if (existingUser) {
+            // Update existing user
+            const updatedAccumulations = prev.map(user => 
+              user.userId === data.userId 
+                ? {
+                    ...user,
+                    totalDiamonds: user.totalDiamonds + giftValue,
+                    giftCount: user.giftCount + 1,
+                    lastGiftTime: new Date(data.timestamp)
+                  }
+                : user
+            );
+            return updatedAccumulations.sort((a, b) => b.totalDiamonds - a.totalDiamonds);
+          } else {
+            // Add new user
+            const newAccumulation = {
+              username: data.username,
+              userId: data.userId,
+              totalDiamonds: giftValue,
+              giftCount: 1,
+              lastGiftTime: new Date(data.timestamp)
+            };
+            return [...prev, newAccumulation].sort((a, b) => b.totalDiamonds - a.totalDiamonds);
+          }
+        });
+
+        // Update user labels
+        setUserLabels(prev => {
+          const existingUser = prev.find(user => user.userId === data.userId);
+          
+          let newUser: UserLabel;
+          if (existingUser) {
+            const totalDiamonds = (existingUser.totalDiamonds || 0) + giftValue;
+            newUser = {
+              ...existingUser,
+              totalDiamonds,
+              lastActivity: new Date(data.timestamp),
+              label: totalDiamonds >= 100 ? 'Naik ke atas panggung' : 'Baris 1'
+            };
+          } else {
+            newUser = {
+              username: data.username,
+              userId: data.userId,
+              totalDiamonds: giftValue,
+              lastActivity: new Date(data.timestamp),
+              label: giftValue >= 100 ? 'Naik ke atas panggung' : 'Baris 1'
+            };
+          }
+          
+          return updateUserLabels(prev, newUser);
+        });
+      }
     });
 
     socket.on('tiktok-like', (data) => {
@@ -128,6 +252,21 @@ export default function TikTokLive() {
       if (likesRef.current) {
         likesRef.current.scrollTop = likesRef.current.scrollHeight;
       }
+
+      // Update user labels for likers
+      setUserLabels(prev => {
+        const existingUser = prev.find(user => user.username === data.username);
+        if (!existingUser) {
+          return [...prev, {
+            username: data.username,
+            userId: `like_${data.username}`,
+            label: 'Baris 2' as const,
+            lastActivity: new Date(),
+            isLiker: true
+          }];
+        }
+        return prev;
+      });
     });
 
     socket.on('tiktok-member', (data) => {
@@ -185,7 +324,7 @@ export default function TikTokLive() {
       setGifts([]);
       setLikes([]);
       setMembers([]);
-      setGiftAccumulations([]);
+      setProcessedUuids(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect');
       setIsLive(false);
@@ -209,10 +348,10 @@ export default function TikTokLive() {
       setGifts([]);
       setLikes([]);
       setMembers([]);
-      setGiftAccumulations([]);
       setTiktokUsername('');
       setIsLive(false);
       setError('');
+      setUserLabels([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
     }
@@ -244,6 +383,13 @@ export default function TikTokLive() {
           >
             Disconnect
           </button>
+          <Link 
+            href="/animate"
+            className="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 transition-colors duration-200 flex items-center gap-2"
+          >
+            <span>🎮</span>
+            Visualisasi
+          </Link>
         </div>
         <div className="mt-3 flex items-center gap-2">
           <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'} shadow-glow`}></div>
@@ -295,8 +441,8 @@ export default function TikTokLive() {
             ref={giftsRef} 
             className="h-[400px] overflow-y-auto custom-scrollbar"
           >
-            {gifts.map((gift, index) => (
-              <div key={index} className="mb-2 p-3 bg-navy-700 rounded-lg border border-navy-600 hover:border-pink-500 transition-colors duration-200">
+            {gifts.map((gift) => (
+              <div key={gift.uuid} className="mb-2 p-3 bg-navy-700 rounded-lg border border-navy-600 hover:border-pink-500 transition-colors duration-200">
                 <div className="font-bold text-pink-400">{gift.username}</div>
                 <div className="text-gray-300">
                   Sent {gift.giftName} <span className="text-yellow-500">(×{gift.repeatCount})</span>
@@ -304,6 +450,12 @@ export default function TikTokLive() {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
                   {new Date(gift.timestamp).toLocaleTimeString()}
+                </div>
+                <div className="text-xs font-mono text-gray-500 mt-1 border-t border-navy-600 pt-1">
+                  UUID: <span className="text-blue-400">{gift.uuid}</span>
+                </div>
+                <div className="text-xs font-mono text-gray-500">
+                  Time since last: <span className="text-blue-400">{gift.timeSinceLastGift}ms</span>
                 </div>
               </div>
             ))}
@@ -317,19 +469,24 @@ export default function TikTokLive() {
             Akumulasi Gift
           </h2>
           <div className="h-[400px] overflow-y-auto custom-scrollbar">
-            {giftAccumulations.map((accumulation, index) => (
+            {giftAccumulations.map((accumulation) => (
               <div 
-                key={index} 
+                key={accumulation.userId}
                 className="mb-2 p-3 bg-navy-700 rounded-lg border border-navy-600 hover:border-yellow-500 transition-colors duration-200"
               >
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-yellow-400">{accumulation.username}</span>
+                  <div>
+                    <span className="font-bold text-yellow-400">{accumulation.username}</span>
+                    <div className="text-xs text-gray-400">
+                      Total Gifts: {accumulation.giftCount}
+                    </div>
+                  </div>
                   <span className="text-2xl font-bold text-yellow-500">
                     💎 {accumulation.totalDiamonds.toLocaleString()}
                   </span>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Last gift: {new Date(accumulation.lastGiftTime).toLocaleTimeString()}
+                  Last gift: {accumulation.lastGiftTime.toLocaleTimeString()}
                 </div>
               </div>
             ))}
@@ -366,6 +523,65 @@ export default function TikTokLive() {
                   </div>
                 </div>
               ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Label Panel */}
+      <div className="bg-navy-800 rounded-lg shadow-lg p-6 border border-navy-600 mt-6">
+        <h2 className="text-xl font-bold mb-4 text-white flex items-center">
+          <span className="mr-2">🏷️</span>
+          Label Penonton
+        </h2>
+        <div className="space-y-4">
+          {/* Naik ke atas panggung */}
+          <div className="bg-navy-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-pink-400 mb-2">🎭 Naik ke atas panggung</h3>
+            <div className="space-y-2">
+              {userLabels
+                .filter(user => user.label === 'Naik ke atas panggung')
+                .map(user => (
+                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
+                    <span className="text-white">{user.username}</span>
+                    <span className="text-yellow-400">💎 {user.totalDiamonds}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Baris 1 */}
+          <div className="bg-navy-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-blue-400 mb-2">1️⃣ Baris 1</h3>
+            <div className="space-y-2">
+              {userLabels
+                .filter(user => user.label === 'Baris 1')
+                .map(user => (
+                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
+                    <span className="text-white">{user.username}</span>
+                    {user.totalDiamonds && (
+                      <span className="text-yellow-400">💎 {user.totalDiamonds}</span>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Baris 2 - Like dan Komen */}
+          <div className="bg-navy-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-green-400 mb-2">2️⃣ Like dan Komen</h3>
+            <div className="space-y-2">
+              {userLabels
+                .filter(user => user.label === 'Baris 2')
+                .map(user => (
+                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
+                    <span className="text-white">{user.username}</span>
+                    <span className="text-gray-400">
+                      {user.isCommenter && '💬'}
+                      {user.isLiker && '❤️'}
+                    </span>
+                  </div>
+                ))}
+            </div>
           </div>
         </div>
       </div>
