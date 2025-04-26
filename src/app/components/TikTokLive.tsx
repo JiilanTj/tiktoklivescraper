@@ -142,6 +142,15 @@ export default function TikTokLive() {
       setError('');
     });
 
+    // Emit Baris 2 data whenever userLabels changes
+    const baris2Users = userLabels
+      .filter(user => user.label === 'Baris 2')
+      .slice(0, 28);
+    
+    if (baris2Users.length > 0) {
+      socket.emit('update-baris2', baris2Users);
+    }
+
     socket.on('disconnect', () => {
       setIsConnected(false);
       setIsLive(false);

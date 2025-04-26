@@ -51,8 +51,8 @@ app.post('/api/tiktok/connect', async (req, res) => {
       enableWebsocketUpgrade: true,
       fetchRoomInfoOnConnect: true,
       requestOptions: {
-        timeout: 5000,
-        retries: 3
+        timeout: 10000,  // Increased timeout
+        retries: 5      // Increased retries
       }
     });
 
@@ -62,10 +62,30 @@ app.post('/api/tiktok/connect', async (req, res) => {
       console.log(`Successfully connected to ${username}'s live stream`);
     } catch (error: unknown) {
       console.error('Connection error:', error);
-      if (error instanceof Error && error.message.includes('User not found')) {
-        return res.status(404).json({ error: 'TikTok user not found or not currently live streaming' });
+      
+      // Handle specific error cases
+      if (error instanceof Error) {
+        if (error.message.includes('User not found')) {
+          return res.status(404).json({ 
+            error: 'TikTok user not found or username is incorrect' 
+          });
+        }
+        if (error.message.includes('Failed to retrieve the initial room data')) {
+          return res.status(400).json({ 
+            error: 'User is not currently live streaming or stream is private' 
+          });
+        }
+        if (error.message.includes('timeout')) {
+          return res.status(408).json({ 
+            error: 'Connection timed out. Please try again.' 
+          });
+        }
       }
-      throw error;
+      
+      // Generic error response
+      return res.status(500).json({ 
+        error: 'Failed to connect to TikTok live stream. Please check if the user is live and try again.' 
+      });
     }
 
     // Simpan koneksi di map

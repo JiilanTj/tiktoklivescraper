@@ -1,13 +1,22 @@
 'use client';
 
 import { useEffect } from 'react';
+import { io } from 'socket.io-client';
 
 interface CrowdSprite extends Phaser.GameObjects.Sprite {
   outlineSprite?: Phaser.GameObjects.Sprite;
+  labels?: Phaser.GameObjects.Text[];
 }
 
 export default function GameComponent() {
   useEffect(() => {
+    const socket = io('http://localhost:5000');
+    let baris2Users: { username: string }[] = [];
+
+    socket.on('baris2-update', (data) => {
+      baris2Users = data.slice(0, 28); // Take only first 28 users
+    });
+
     const initPhaser = async () => {
       const Phaser = (await import('phaser')).default;
 
@@ -269,152 +278,85 @@ export default function GameComponent() {
           const djStandScale = 1.8;
           this.djStand.setScale(djStandScale);
 
-          // Add crowd next to DJ Stand (left side)
+          // Stage Crowd Left
           const djCrowdLeft = this.add.sprite(
-            this.centerX - 450, // Left position
-            this.centerY - 170, // Height position
+            this.centerX - 450,
+            this.centerY - 170,
             'crowd_blue'
           ) as CrowdSprite;
-          djCrowdLeft.setScale(2.2);
-          djCrowdLeft.setDepth(-0.4);
+          djCrowdLeft.setScale(this.crowdScale);
+          djCrowdLeft.setDepth(-0.3);
           djCrowdLeft.play('crowd_dance_blue');
           this.crowds.push(djCrowdLeft);
 
-          // Add labels for left stage crowd
-          const leftLabelStartX = this.centerX - 450 - (this.personWidth * 3);
+          // Create labels for left stage crowd with higher position
+          const leftStageCrowdLabels = this.createStageCrowdLabels(
+            this.centerX - 450,
+            this.centerY - 170,
+            'Orang'
+          );
 
-          for (let i = 1; i <= 7; i++) {
-            const personLabel = this.add.text(
-              leftLabelStartX + (this.personWidth * (i-1)),
-              this.labelY,
-              `Orang ${i}`,
-              {
-                fontFamily: 'Arial',
-                fontSize: '12px',
-                color: '#ffffff',
-                stroke: '#000000',
-                strokeThickness: 3,
-                shadow: { color: '#000000', fill: true, blur: 2, offsetX: 1, offsetY: 1 }
-              }
-            );
-            personLabel.setOrigin(0.5);
-            personLabel.setDepth(999);
-            
-            // Add animation to each label
-            this.tweens.add({
-              targets: personLabel,
-              y: '+=8',
-              duration: 1000,
-              ease: 'Sine.easeInOut',
-              yoyo: true,
-              repeat: -1
-            });
-          }
-
-          // Add crowd next to DJ Stand (right side)
+          // Stage Crowd Right
           const djCrowdRight = this.add.sprite(
-            this.centerX + 450, // Symmetrical to the left crowd
-            this.centerY - 170, // Same height as left crowd
+            this.centerX + 450,
+            this.centerY - 170,
             'crowd_blue'
           ) as CrowdSprite;
-          djCrowdRight.setScale(2.2);
-          djCrowdRight.setDepth(-0.4);
+          djCrowdRight.setScale(this.crowdScale);
+          djCrowdRight.setDepth(-0.3);
           djCrowdRight.play('crowd_dance_blue');
           this.crowds.push(djCrowdRight);
 
-          // Add labels for right stage crowd
-          const rightLabelStartX = this.centerX + 450 - (this.personWidth * 3);
-
-          for (let i = 1; i <= 7; i++) {
-            const personLabel = this.add.text(
-              rightLabelStartX + (this.personWidth * (i-1)),
-              this.labelY,
-              `Orang ${i}`,
-              {
-                fontFamily: 'Arial',
-                fontSize: '12px',
-                color: '#ffffff',
-                stroke: '#000000',
-                strokeThickness: 3,
-                shadow: { color: '#000000', fill: true, blur: 2, offsetX: 1, offsetY: 1 }
-              }
-            );
-            personLabel.setOrigin(0.5);
-            personLabel.setDepth(999);
-            
-            // Add animation to each label
-            this.tweens.add({
-              targets: personLabel,
-              y: '+=8',
-              duration: 1000,
-              ease: 'Sine.easeInOut',
-              yoyo: true,
-              repeat: -1
-            });
-          }
+          // Create labels for right stage crowd with higher position
+          const rightStageCrowdLabels = this.createStageCrowdLabels(
+            this.centerX + 450,
+            this.centerY - 170,
+            'Orang'
+          );
 
           // Create vinyl animation if it doesn't exist
-          if (!this.anims.exists('spin')) {
-            const frames = [];
-            for (let i = 0; i < 9; i++) {
-              frames.push({ key: 'vinyl', frame: i });
-            }
-
+          if (!this.anims.exists('vinyl_spin')) {
             this.anims.create({
-              key: 'spin',
-              frames: frames,
-              frameRate: 4,
-              repeat: -1
+              key: 'vinyl_spin',
+              frames: this.anims.generateFrameNumbers('vinyl', {
+                start: 0,
+                end: 7,
+              }),
+              frameRate: 10,
+              repeat: -1,
             });
           }
 
           // Helper function to create and setup vinyl sprites
-          const createVinyl = (x: number, y: number, scale: number = 1) => {
-            const vinyl = this.add.sprite(x, y, 'vinyl', 0);
-            vinyl.setOrigin(0.5);
-            vinyl.setScale(scale);
-            if (this.anims.exists('spin')) {
-              vinyl.play('spin');
-            }
+          const createVinylSprite = (x: number, y: number) => {
+            const vinyl = this.add.sprite(x, y, 'vinyl');
+            vinyl.setScale(0.5);
+            vinyl.setDepth(0.1);
+            vinyl.play('vinyl_spin');
             return vinyl;
           };
 
-          // Positioning constants
-          const vinylScale = 1.4;
-
-          // Create vinyls
-          this.vinylLeft = this.add.sprite(this.centerX - this.spacingLeft, this.standY - this.heightOffset, 'vinyl');
-          this.vinylLeft.setScale(vinylScale);
-          this.vinylLeft.play('spin');
-
-          this.vinylRight = this.add.sprite(this.centerX + this.spacingRight, this.standY - this.heightOffset, 'vinyl');
-          this.vinylRight.setScale(vinylScale);
-          this.vinylRight.play('spin');
-
-          this.vinyl = this.vinylLeft;
+          // Create vinyl sprites
+          this.vinylLeft = createVinylSprite(this.centerX - 450, this.centerY - 170);
+          this.vinylRight = createVinylSprite(this.centerX + 450, this.centerY - 170);
 
           // Character slightly higher
           this.body = this.add.image(this.centerX, this.centerY - this.bodyOffset, 'body');
           this.body.setOrigin(0.5);
           
-          this.head = this.add.sprite(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset, 'head', 0);
+          this.head = this.add.sprite(this.centerX, this.centerY - this.bodyOffset - this.headOffset, 'head');
           this.head.setOrigin(0.5);
 
           const characterScale = 2.0;
 
-          this.body.setScale(characterScale);
-          this.head.setScale(characterScale);
+          this.body.setScale(this.characterScale);
+          this.head.setScale(this.characterScale);
 
           // Add HOST text with retro style
-          this.hostText = this.add.text(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset - 35, 'HOST', {
+          this.hostText = this.add.text(this.centerX, this.centerY - 300, 'HOST', {
             fontFamily: 'Arial',
-            fontSize: '24px',
-            fontStyle: 'bold',
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 4,
-            shadow: { color: '#ff00ff', fill: true, blur: 8, offsetX: 2, offsetY: 2 },
-            padding: { x: 8, y: 8 }
+            fontSize: '32px',
+            color: '#ffffff'
           });
           this.hostText.setOrigin(0.5);
 
@@ -432,7 +374,7 @@ export default function GameComponent() {
           if (!this.anims.exists('crowd_dance_blue')) {
             this.anims.create({
               key: 'crowd_dance_blue',
-              frames: this.anims.generateFrameNumbers('crowd_blue', { 
+              frames: this.anims.generateFrameNumbers('crowd_blue', {
                 start: 0,
                 end: 3
               }),
@@ -444,7 +386,7 @@ export default function GameComponent() {
           if (!this.anims.exists('crowd_dance_pink')) {
             this.anims.create({
               key: 'crowd_dance_pink',
-              frames: this.anims.generateFrameNumbers('crowd_pink', { 
+              frames: this.anims.generateFrameNumbers('crowd_pink', {
                 start: 0,
                 end: 3
               }),
@@ -453,54 +395,17 @@ export default function GameComponent() {
             });
           }
 
-          // Function to create labels with adjusted spacing
-          const createCrowdLabels = (crowdX: number, crowdY: number, rowPrefix: string) => {
-            // Calculate the total width of the crowd sprite
-            const crowdWidth = 256 * this.crowdScale; // 256 is the sprite width
-            
-            // Adjust the total width for labels
-            const totalLabelSpacing = crowdWidth * 1.1; // Changed to 1.1 for perfect spacing
-            const labelStartX = crowdX - (totalLabelSpacing / 2);
-            const labelSpacing = totalLabelSpacing / 6; // Space between each label
-            
-            const labels: Phaser.GameObjects.Text[] = [];
-
-            for (let i = 1; i <= 7; i++) {
-              const personLabel = this.add.text(
-                labelStartX + ((i-1) * labelSpacing),
-                crowdY - (crowdWidth * 0.27), // Adjusted to 0.27 for perfect height
-                `${rowPrefix} ${i}`,
-                {
-                  fontFamily: 'Arial',
-                  fontSize: `${Math.max(Math.min(this.width * 0.008, 12), 8)}px`,
-                  color: '#ffffff',
-                  stroke: '#000000',
-                  strokeThickness: 2,
-                  shadow: { 
-                    color: '#000000',
-                    fill: true,
-                    blur: 1,
-                    offsetX: 1,
-                    offsetY: 1
-                  }
-                }
-              );
-              personLabel.setOrigin(0.5);
-              personLabel.setDepth(999);
-
-              this.tweens.add({
-                targets: personLabel,
-                y: '+=4',
-                duration: 1000,
-                ease: 'Sine.easeInOut',
-                yoyo: true,
-                repeat: -1
-              });
-              
-              labels.push(personLabel);
-            }
-            return labels;
-          };
+          if (!this.anims.exists('crowd_dance_lblue')) {
+            this.anims.create({
+              key: 'crowd_dance_lblue',
+              frames: this.anims.generateFrameNumbers('crowd_lblue', {
+                start: 0,
+                end: 3
+              }),
+              frameRate: 4,
+              repeat: -1
+            });
+          }
 
           // Create Row 1 (front row) - Blue silhouettes
           const leftCrowdRow1 = this.add.sprite(
@@ -514,7 +419,7 @@ export default function GameComponent() {
           this.crowds.push(leftCrowdRow1);
 
           // Create labels immediately after each crowd
-          const leftRow1Labels = createCrowdLabels(
+          const leftRow1Labels = this.createCrowdLabels(
             this.centerX - (this.width * 0.20),
             this.crowdY,
             'Orang'
@@ -530,7 +435,7 @@ export default function GameComponent() {
           rightCrowdRow1.play('crowd_dance_blue');
           this.crowds.push(rightCrowdRow1);
 
-          const rightRow1Labels = createCrowdLabels(
+          const rightRow1Labels = this.createCrowdLabels(
             this.centerX + (this.width * 0.20),
             this.crowdY,
             'Orang'
@@ -547,10 +452,11 @@ export default function GameComponent() {
           leftCrowdRow2.play('crowd_dance_pink');
           this.crowds.push(leftCrowdRow2);
 
-          const leftRow2Labels = createCrowdLabels(
+          const leftRow2Labels = this.createCrowdLabels(
             this.centerX - (this.width * 0.20),
             this.crowdRow2Y,
-            'Orang'
+            'Orang',
+            0  // Start from index 0
           );
 
           const rightCrowdRow2 = this.add.sprite(
@@ -563,10 +469,11 @@ export default function GameComponent() {
           rightCrowdRow2.play('crowd_dance_pink');
           this.crowds.push(rightCrowdRow2);
 
-          const rightRow2Labels = createCrowdLabels(
+          const rightRow2Labels = this.createCrowdLabels(
             this.centerX + (this.width * 0.20),
             this.crowdRow2Y,
-            'Orang'
+            'Orang',
+            7  // Start from index 7
           );
 
           // Create Row 3 (back row) - Light Blue silhouettes
@@ -580,10 +487,11 @@ export default function GameComponent() {
           leftCrowdRow3.play('crowd_dance_lblue');
           this.crowds.push(leftCrowdRow3);
 
-          const leftRow3Labels = createCrowdLabels(
+          const leftRow3Labels = this.createCrowdLabels(
             this.centerX - (this.width * 0.20),
             this.crowdRow3Y,
-            'Orang'
+            'Orang',
+            14  // Start from index 14
           );
 
           const rightCrowdRow3 = this.add.sprite(
@@ -596,10 +504,11 @@ export default function GameComponent() {
           rightCrowdRow3.play('crowd_dance_lblue');
           this.crowds.push(rightCrowdRow3);
 
-          const rightRow3Labels = createCrowdLabels(
+          const rightRow3Labels = this.createCrowdLabels(
             this.centerX + (this.width * 0.20),
             this.crowdRow3Y,
-            'Orang'
+            'Orang',
+            21  // Start from index 21
           );
 
           // Add slight up and down movement to all crowds
@@ -635,8 +544,8 @@ export default function GameComponent() {
 
           // Update scales di bagian yang relevan
           this.djStand.setScale(djStandScale);
-          this.body.setScale(characterScale);
-          this.head.setScale(characterScale);
+          this.body.setScale(this.characterScale);
+          this.head.setScale(this.characterScale);
 
           // Update crowd scales
           this.crowds.forEach(crowd => {
@@ -763,6 +672,99 @@ export default function GameComponent() {
           });
         }
 
+        private createCrowdLabels(crowdX: number, crowdY: number, rowPrefix: string, startIndex: number = 0): Phaser.GameObjects.Text[] {
+          const crowdWidth = 256 * this.crowdScale;
+          const totalLabelSpacing = crowdWidth * 1.1;
+          const labelStartX = crowdX - (totalLabelSpacing / 2);
+          const labelSpacing = totalLabelSpacing / 6;
+          
+          const labels: Phaser.GameObjects.Text[] = [];
+
+          for (let i = 1; i <= 7; i++) {
+            const userIndex = startIndex + i - 1;
+            const labelText = baris2Users[userIndex]?.username || `${rowPrefix} ${i}`;
+            
+            const personLabel = this.add.text(
+              labelStartX + ((i-1) * labelSpacing),
+              crowdY - (crowdWidth * 0.27),
+              labelText,
+              {
+                fontFamily: 'Arial',
+                fontSize: `${Math.max(Math.min(this.width * 0.008, 12), 8)}px`,
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 2,
+                shadow: { 
+                  color: '#000000',
+                  fill: true,
+                  blur: 1,
+                  offsetX: 1,
+                  offsetY: 1
+                }
+              }
+            );
+            personLabel.setOrigin(0.5);
+            personLabel.setDepth(999);
+            
+            this.tweens.add({
+              targets: personLabel,
+              y: '+=4',
+              duration: 1000,
+              ease: 'Sine.easeInOut',
+              yoyo: true,
+              repeat: -1
+            });
+            
+            labels.push(personLabel);
+          }
+          return labels;
+        }
+
+        private createStageCrowdLabels(crowdX: number, crowdY: number, rowPrefix: string): Phaser.GameObjects.Text[] {
+          const crowdWidth = 256 * this.crowdScale;
+          const totalLabelSpacing = crowdWidth * 1.1;
+          const labelStartX = crowdX - (totalLabelSpacing / 2);
+          const labelSpacing = totalLabelSpacing / 6;
+          
+          const labels: Phaser.GameObjects.Text[] = [];
+
+          for (let i = 1; i <= 7; i++) {
+            const personLabel = this.add.text(
+              labelStartX + ((i-1) * labelSpacing),
+              crowdY - (crowdWidth * 0.31), // Reduced height from 0.35 to 0.31 for stage crowd labels
+              `${rowPrefix} ${i}`,
+              {
+                fontFamily: 'Arial',
+                fontSize: `${Math.max(Math.min(this.width * 0.008, 12), 8)}px`,
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 2,
+                shadow: { 
+                  color: '#000000',
+                  fill: true,
+                  blur: 1,
+                  offsetX: 1,
+                  offsetY: 1
+                }
+              }
+            );
+            personLabel.setOrigin(0.5);
+            personLabel.setDepth(999);
+            
+            this.tweens.add({
+              targets: personLabel,
+              y: '+=4',
+              duration: 1000,
+              ease: 'Sine.easeInOut',
+              yoyo: true,
+              repeat: -1
+            });
+            
+            labels.push(personLabel);
+          }
+          return labels;
+        }
+
         shutdown() {
           if (this.equalizerTimer) {
             this.equalizerTimer.destroy();
@@ -823,6 +825,7 @@ export default function GameComponent() {
       return () => {
         window.removeEventListener('resize', resizeGame);
         game.destroy(true);
+        socket.disconnect();
       };
     };
 
