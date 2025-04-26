@@ -19,6 +19,7 @@ export default function AnimatePage() {
           width: 100%;
           height: 100%;
           overflow: hidden;
+          background: #000000;
         }
         #phaser-container {
           width: 100vw;
@@ -28,8 +29,8 @@ export default function AnimatePage() {
           left: 0;
         }
         canvas {
-          width: 100% !important;
-          height: 100% !important;
+          width: 100vw !important;
+          height: 100vh !important;
         }
       `}</style>
       <div className="fixed inset-0 w-screen h-screen">

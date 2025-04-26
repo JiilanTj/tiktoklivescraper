@@ -30,6 +30,30 @@ export default function GameComponent() {
         private crowds: CrowdSprite[] = [];
         private readonly CROWD_SPACING = 600;
 
+        // Add shared properties for responsive calculations
+        private width!: number;
+        private height!: number;
+        private centerX!: number;
+        private centerY!: number;
+        private bodyOffset!: number;
+        private headOffset!: number;
+        private standY!: number;
+        private spacingLeft!: number;
+        private spacingRight!: number;
+        private heightOffset!: number;
+        private moveTowardsCenterOffset!: number;
+        private additionalCenterOffset!: number;
+        private fineAdjustmentOffset!: number;
+        private personWidth!: number;
+        private labelY!: number;
+        private crowdY!: number;
+        private crowdRow2Y!: number;
+        private crowdRow3Y!: number;
+        private characterScale!: number;
+        private djStandScale!: number;
+        private crowdScale!: number;
+        private equalizerScale!: number;
+
         constructor() {
           super({ key: 'CharacterScene' });
         }
@@ -74,22 +98,54 @@ export default function GameComponent() {
           });
         }
 
-        create() {
-          const centerX = this.cameras.main.centerX;
-          const centerY = this.cameras.main.centerY;
-          const bodyOffset = 135;
-          const headOffset = 45;
-          const standY = centerY - 70;
-          const spacingLeft = 80;
-          const spacingRight = 80;
-          const heightOffset = 18;
+        private updateResponsiveValues() {
+          this.width = this.cameras.main.width;
+          this.height = this.cameras.main.height;
+          this.centerX = this.width / 2;
+          this.centerY = this.height / 2;
 
-          // Add black background
-          const width = this.cameras.main.width;
-          const height = this.cameras.main.height;
-          this.background = this.add.rectangle(0, 0, width, height, 0x000000);
+          // Update all measurements relative to screen size
+          this.bodyOffset = this.height * 0.2;
+          this.headOffset = this.height * 0.07;
+          this.standY = this.centerY - (this.height * 0.1);
+          this.spacingLeft = this.width * 0.06;
+          this.spacingRight = this.width * 0.06;
+          this.heightOffset = this.height * 0.025;
+
+          // Crowd positioning calculations - Increased horizontal spacing
+          this.moveTowardsCenterOffset = this.width * 0.15; // Increased from 0.1 to 0.15
+          this.additionalCenterOffset = this.width * 0.08; // Increased from 0.06 to 0.08
+          this.fineAdjustmentOffset = this.width * 0.06; // Increased from 0.04 to 0.06
+          this.personWidth = this.width * 0.05;
+
+          // Label positioning
+          this.labelY = this.centerY - (this.height * 0.3);
+          this.crowdY = this.centerY + (this.height * 0.07);
+          this.crowdRow2Y = this.centerY + (this.height * 0.22);
+          this.crowdRow3Y = this.centerY + (this.height * 0.37);
+
+          // Scaling calculations
+          this.characterScale = Math.min(this.width, this.height) * 0.002;
+          this.djStandScale = Math.min(this.width, this.height) * 0.0018;
+          this.crowdScale = Math.min(this.width, this.height) * 0.002;
+          this.equalizerScale = Math.min(this.width, this.height) * 0.0014;
+        }
+
+        create() {
+          this.updateResponsiveValues();
+
+          // Add black background first (before any other elements)
+          this.background = this.add.rectangle(0, 0, this.width, this.height, 0x000000);
           this.background.setOrigin(0, 0);
           this.background.setDepth(-1);
+
+          // Calculate base positions for crowds with unique names
+          const initialBaseLeftX = (this.width / 4) + this.moveTowardsCenterOffset;
+          const initialBaseRightX = ((this.width * 3) / 4) - this.moveTowardsCenterOffset;
+
+          // Calculate final positions with all offsets
+          const initialLeftSideX = initialBaseLeftX + this.additionalCenterOffset - this.fineAdjustmentOffset;
+          const initialRightSideX = initialBaseRightX - this.additionalCenterOffset + this.fineAdjustmentOffset;
 
           // Create strobe animations with different speeds
           if (!this.anims.exists('strobe_effect_normal')) {
@@ -118,9 +174,9 @@ export default function GameComponent() {
 
           // Add multiple strobe sprites in different positions
           const strobePositions = [
-            { x: centerX - 200, y: centerY - bodyOffset + 50, scale: 1.2 },
-            { x: centerX + 200, y: centerY - bodyOffset + 50, scale: 1.2 },
-            { x: centerX, y: centerY - bodyOffset, scale: 1.5 }
+            { x: this.centerX - 200, y: this.centerY - this.bodyOffset + 50, scale: 1.2 },
+            { x: this.centerX + 200, y: this.centerY - this.bodyOffset + 50, scale: 1.2 },
+            { x: this.centerX, y: this.centerY - this.bodyOffset, scale: 1.5 }
           ];
 
           strobePositions.forEach(pos => {
@@ -181,9 +237,9 @@ export default function GameComponent() {
           }
 
           // Add equalizer sprites - positioned horizontally behind the body
-          const equalizerY = centerY - bodyOffset + 40; // Increased offset by 10px
+          const equalizerY = this.centerY - this.bodyOffset + 40; // Increased offset by 10px
           const totalWidth = this.EQUALIZER_SPACING * (this.NUMBER_OF_EQUALIZERS - 1);
-          const startX = centerX - totalWidth / 2;
+          const startX = this.centerX - totalWidth / 2;
 
           for (let i = 0; i < this.NUMBER_OF_EQUALIZERS; i++) {
             const equalizer = this.add.sprite(
@@ -208,15 +264,15 @@ export default function GameComponent() {
           });
 
           // Create and scale the DJ stand first
-          this.djStand = this.add.image(centerX, centerY - 70, 'djstand');
+          this.djStand = this.add.image(this.centerX, this.centerY - 70, 'djstand');
           this.djStand.setOrigin(0.5);
           const djStandScale = 1.8;
           this.djStand.setScale(djStandScale);
 
           // Add crowd next to DJ Stand (left side)
           const djCrowdLeft = this.add.sprite(
-            centerX - 450, // Left position
-            centerY - 170, // Height position
+            this.centerX - 450, // Left position
+            this.centerY - 170, // Height position
             'crowd_blue'
           ) as CrowdSprite;
           djCrowdLeft.setScale(2.2);
@@ -225,14 +281,12 @@ export default function GameComponent() {
           this.crowds.push(djCrowdLeft);
 
           // Add labels for left stage crowd
-          const personWidth = 70;
-          const leftLabelStartX = centerX - 350 - (personWidth * 3);
-          const labelY = centerY - 275; // Above the stage crowd
+          const leftLabelStartX = this.centerX - 450 - (this.personWidth * 3);
 
           for (let i = 1; i <= 7; i++) {
             const personLabel = this.add.text(
-              leftLabelStartX + (personWidth * (i-1)),
-              labelY,
+              leftLabelStartX + (this.personWidth * (i-1)),
+              this.labelY,
               `Orang ${i}`,
               {
                 fontFamily: 'Arial',
@@ -259,8 +313,8 @@ export default function GameComponent() {
 
           // Add crowd next to DJ Stand (right side)
           const djCrowdRight = this.add.sprite(
-            centerX + 450, // Symmetrical to the left crowd
-            centerY - 170, // Same height as left crowd
+            this.centerX + 450, // Symmetrical to the left crowd
+            this.centerY - 170, // Same height as left crowd
             'crowd_blue'
           ) as CrowdSprite;
           djCrowdRight.setScale(2.2);
@@ -269,12 +323,12 @@ export default function GameComponent() {
           this.crowds.push(djCrowdRight);
 
           // Add labels for right stage crowd
-          const rightLabelStartX = centerX + 450 - (personWidth * 3);
+          const rightLabelStartX = this.centerX + 450 - (this.personWidth * 3);
 
           for (let i = 1; i <= 7; i++) {
             const personLabel = this.add.text(
-              rightLabelStartX + (personWidth * (i-1)),
-              labelY,
+              rightLabelStartX + (this.personWidth * (i-1)),
+              this.labelY,
               `Orang ${i}`,
               {
                 fontFamily: 'Arial',
@@ -329,21 +383,21 @@ export default function GameComponent() {
           const vinylScale = 1.4;
 
           // Create vinyls
-          this.vinylLeft = this.add.sprite(centerX - spacingLeft, standY - heightOffset, 'vinyl');
+          this.vinylLeft = this.add.sprite(this.centerX - this.spacingLeft, this.standY - this.heightOffset, 'vinyl');
           this.vinylLeft.setScale(vinylScale);
           this.vinylLeft.play('spin');
 
-          this.vinylRight = this.add.sprite(centerX + spacingRight, standY - heightOffset, 'vinyl');
+          this.vinylRight = this.add.sprite(this.centerX + this.spacingRight, this.standY - this.heightOffset, 'vinyl');
           this.vinylRight.setScale(vinylScale);
           this.vinylRight.play('spin');
 
           this.vinyl = this.vinylLeft;
 
           // Character slightly higher
-          this.body = this.add.image(centerX, centerY - bodyOffset, 'body');
+          this.body = this.add.image(this.centerX, this.centerY - this.bodyOffset, 'body');
           this.body.setOrigin(0.5);
           
-          this.head = this.add.sprite(centerX, (centerY - bodyOffset) - headOffset, 'head', 0);
+          this.head = this.add.sprite(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset, 'head', 0);
           this.head.setOrigin(0.5);
 
           const characterScale = 2.0;
@@ -352,7 +406,7 @@ export default function GameComponent() {
           this.head.setScale(characterScale);
 
           // Add HOST text with retro style
-          this.hostText = this.add.text(centerX, (centerY - bodyOffset) - headOffset - 35, 'HOST', {
+          this.hostText = this.add.text(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset - 35, 'HOST', {
             fontFamily: 'Arial',
             fontSize: '24px',
             fontStyle: 'bold',
@@ -399,155 +453,154 @@ export default function GameComponent() {
             });
           }
 
-          // Add crowd sprites
-          const crowdY = centerY + 50; // First row position
-          const crowdRow2Y = centerY + 150; // Second row position
-          const crowdRow3Y = centerY + 250; // Third row position
-
-          // Positioning constants
-          const moveTowardsCenterOffset = 120; // Base offset
-          const additionalCenterOffset = 75; // Additional offset towards center
-          const fineAdjustmentOffset = 50; // Increased to 50px for wider spacing
-
-          // Calculate base positions
-          const baseLeftX = (width / 4) + moveTowardsCenterOffset;
-          const baseRightX = ((width * 3) / 4) - moveTowardsCenterOffset;
-
-          // Calculate final positions with all offsets
-          const leftSideX = baseLeftX + additionalCenterOffset - fineAdjustmentOffset; // Move right by 75px, then left by 50px
-          const rightSideX = baseRightX - additionalCenterOffset + fineAdjustmentOffset; // Move left by 75px, then right by 50px
-
-          // Create animations for all colors
-          if (!this.anims.exists('crowd_dance_lblue')) {
-            this.anims.create({
-              key: 'crowd_dance_lblue',
-              frames: this.anims.generateFrameNumbers('crowd_lblue', { 
-                start: 0,
-                end: 3
-              }),
-              frameRate: 4,
-              repeat: -1
-            });
-          }
-
-          // Function to create labels for a crowd
+          // Function to create labels with adjusted spacing
           const createCrowdLabels = (crowdX: number, crowdY: number, rowPrefix: string) => {
-            const personWidth = 70;
-            const labelStartX = crowdX - (personWidth * 3);
-            const labelY = crowdY - 105;
+            // Calculate the total width of the crowd sprite
+            const crowdWidth = 256 * this.crowdScale; // 256 is the sprite width
+            
+            // Adjust the total width for labels
+            const totalLabelSpacing = crowdWidth * 1.1; // Changed to 1.1 for perfect spacing
+            const labelStartX = crowdX - (totalLabelSpacing / 2);
+            const labelSpacing = totalLabelSpacing / 6; // Space between each label
+            
             const labels: Phaser.GameObjects.Text[] = [];
 
             for (let i = 1; i <= 7; i++) {
               const personLabel = this.add.text(
-                labelStartX + (personWidth * (i-1)),
-                labelY,
+                labelStartX + ((i-1) * labelSpacing),
+                crowdY - (crowdWidth * 0.27), // Adjusted to 0.27 for perfect height
                 `${rowPrefix} ${i}`,
                 {
                   fontFamily: 'Arial',
-                  fontSize: '12px',
+                  fontSize: `${Math.max(Math.min(this.width * 0.008, 12), 8)}px`,
                   color: '#ffffff',
                   stroke: '#000000',
-                  strokeThickness: 3,
-                  shadow: { color: '#000000', fill: true, blur: 2, offsetX: 1, offsetY: 1 }
+                  strokeThickness: 2,
+                  shadow: { 
+                    color: '#000000',
+                    fill: true,
+                    blur: 1,
+                    offsetX: 1,
+                    offsetY: 1
+                  }
                 }
               );
               personLabel.setOrigin(0.5);
               personLabel.setDepth(999);
-              labels.push(personLabel);
 
-              // Add animation to each label
               this.tweens.add({
                 targets: personLabel,
-                y: '+=8',
+                y: '+=4',
                 duration: 1000,
                 ease: 'Sine.easeInOut',
                 yoyo: true,
                 repeat: -1
               });
+              
+              labels.push(personLabel);
             }
             return labels;
           };
 
           // Create Row 1 (front row) - Blue silhouettes
           const leftCrowdRow1 = this.add.sprite(
-            leftSideX,
-            crowdY,
+            this.centerX - (this.width * 0.20),
+            this.crowdY,
             'crowd_blue'
           ) as CrowdSprite;
-          leftCrowdRow1.setScale(2.2);
+          leftCrowdRow1.setScale(this.crowdScale);
           leftCrowdRow1.setDepth(-0.3);
           leftCrowdRow1.play('crowd_dance_blue');
           this.crowds.push(leftCrowdRow1);
 
-          // Add labels for left crowd row 1
-          const leftRow1Labels = createCrowdLabels(leftSideX, crowdY, 'Orang');
+          // Create labels immediately after each crowd
+          const leftRow1Labels = createCrowdLabels(
+            this.centerX - (this.width * 0.20),
+            this.crowdY,
+            'Orang'
+          );
 
           const rightCrowdRow1 = this.add.sprite(
-            rightSideX,
-            crowdY,
+            this.centerX + (this.width * 0.20),
+            this.crowdY,
             'crowd_blue'
           ) as CrowdSprite;
-          rightCrowdRow1.setScale(2.2);
+          rightCrowdRow1.setScale(this.crowdScale);
           rightCrowdRow1.setDepth(-0.3);
           rightCrowdRow1.play('crowd_dance_blue');
           this.crowds.push(rightCrowdRow1);
 
-          // Add labels for right crowd row 1
-          const rightRow1Labels = createCrowdLabels(rightSideX, crowdY, 'Orang');
+          const rightRow1Labels = createCrowdLabels(
+            this.centerX + (this.width * 0.20),
+            this.crowdY,
+            'Orang'
+          );
 
           // Create Row 2 (middle row) - Pink silhouettes
           const leftCrowdRow2 = this.add.sprite(
-            leftSideX,
-            crowdRow2Y,
+            this.centerX - (this.width * 0.20),
+            this.crowdRow2Y,
             'crowd_pink'
           ) as CrowdSprite;
-          leftCrowdRow2.setScale(2.2);
+          leftCrowdRow2.setScale(this.crowdScale);
           leftCrowdRow2.setDepth(-0.2);
           leftCrowdRow2.play('crowd_dance_pink');
           this.crowds.push(leftCrowdRow2);
 
-          // Add labels for left crowd row 2
-          const leftRow2Labels = createCrowdLabels(leftSideX, crowdRow2Y, 'Orang');
+          const leftRow2Labels = createCrowdLabels(
+            this.centerX - (this.width * 0.20),
+            this.crowdRow2Y,
+            'Orang'
+          );
 
           const rightCrowdRow2 = this.add.sprite(
-            rightSideX,
-            crowdRow2Y,
+            this.centerX + (this.width * 0.20),
+            this.crowdRow2Y,
             'crowd_pink'
           ) as CrowdSprite;
-          rightCrowdRow2.setScale(2.2);
+          rightCrowdRow2.setScale(this.crowdScale);
           rightCrowdRow2.setDepth(-0.2);
           rightCrowdRow2.play('crowd_dance_pink');
           this.crowds.push(rightCrowdRow2);
 
-          // Add labels for right crowd row 2
-          const rightRow2Labels = createCrowdLabels(rightSideX, crowdRow2Y, 'Orang');
+          const rightRow2Labels = createCrowdLabels(
+            this.centerX + (this.width * 0.20),
+            this.crowdRow2Y,
+            'Orang'
+          );
 
           // Create Row 3 (back row) - Light Blue silhouettes
           const leftCrowdRow3 = this.add.sprite(
-            leftSideX,
-            crowdRow3Y,
+            this.centerX - (this.width * 0.20),
+            this.crowdRow3Y,
             'crowd_lblue'
           ) as CrowdSprite;
-          leftCrowdRow3.setScale(2.2);
+          leftCrowdRow3.setScale(this.crowdScale);
           leftCrowdRow3.setDepth(-0.1);
           leftCrowdRow3.play('crowd_dance_lblue');
           this.crowds.push(leftCrowdRow3);
 
-          // Add labels for left crowd row 3
-          const leftRow3Labels = createCrowdLabels(leftSideX, crowdRow3Y, 'Orang');
+          const leftRow3Labels = createCrowdLabels(
+            this.centerX - (this.width * 0.20),
+            this.crowdRow3Y,
+            'Orang'
+          );
 
           const rightCrowdRow3 = this.add.sprite(
-            rightSideX,
-            crowdRow3Y,
+            this.centerX + (this.width * 0.20),
+            this.crowdRow3Y,
             'crowd_lblue'
           ) as CrowdSprite;
-          rightCrowdRow3.setScale(2.2);
+          rightCrowdRow3.setScale(this.crowdScale);
           rightCrowdRow3.setDepth(-0.1);
           rightCrowdRow3.play('crowd_dance_lblue');
           this.crowds.push(rightCrowdRow3);
 
-          // Add labels for right crowd row 3
-          const rightRow3Labels = createCrowdLabels(rightSideX, crowdRow3Y, 'Orang');
+          const rightRow3Labels = createCrowdLabels(
+            this.centerX + (this.width * 0.20),
+            this.crowdRow3Y,
+            'Orang'
+          );
 
           // Add slight up and down movement to all crowds
           this.crowds.forEach((crowd, index) => {
@@ -599,16 +652,7 @@ export default function GameComponent() {
         }
 
         private handleResize(gameSize: Phaser.Structs.Size) {
-          const width = gameSize.width;
-          const height = gameSize.height;
-          const centerX = width / 2;
-          const centerY = height / 2;
-          const bodyOffset = 135;
-          const headOffset = 45;
-          const standY = centerY - 70;
-          const spacingLeft = 80;
-          const spacingRight = 80;
-          const heightOffset = 18;
+          this.updateResponsiveValues();
           
           if (this.body && this.head && this.djStand) {
             // Stop existing tween before repositioning
@@ -619,42 +663,26 @@ export default function GameComponent() {
 
             // Update background size
             if (this.background) {
-              this.background.setSize(width, height);
+              this.background.setSize(this.width, this.height);
             }
 
-            // Update strobe positions
-            const strobePositions = [
-              { x: centerX - 200, y: centerY - bodyOffset + 50, scale: 1.2 },
-              { x: centerX + 200, y: centerY - bodyOffset + 50, scale: 1.2 },
-              { x: centerX, y: centerY - bodyOffset, scale: 1.5 }
-            ];
+            // Update positions using class properties
+            this.body.setPosition(this.centerX, this.centerY - this.bodyOffset);
+            this.head.setPosition(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset);
+            this.hostText.setPosition(this.centerX, (this.centerY - this.bodyOffset) - this.headOffset - 35);
+            this.djStand.setPosition(this.centerX, this.standY);
 
-            this.strobes.forEach((strobe, index) => {
-              const pos = strobePositions[index];
-              strobe.setPosition(pos.x, pos.y);
-            });
+            // Update scales
+            this.body.setScale(this.characterScale);
+            this.head.setScale(this.characterScale);
+            this.djStand.setScale(this.djStandScale);
 
-            // Update equalizers positions
-            const newEqualizerY = centerY - bodyOffset + 40; // Increased offset by 10px
-            const totalWidth = this.EQUALIZER_SPACING * (this.NUMBER_OF_EQUALIZERS - 1);
-            const startX = centerX - totalWidth / 2;
-
-            this.equalizers.forEach((equalizer, index) => {
-              equalizer.setPosition(startX + (index * this.EQUALIZER_SPACING), newEqualizerY);
-            });
-
-            // Update character positions
-            this.body.setPosition(centerX, centerY - bodyOffset);
-            this.head.setPosition(centerX, (centerY - bodyOffset) - headOffset);
-            this.hostText.setPosition(centerX, (centerY - bodyOffset) - headOffset - 35);
-            this.djStand.setPosition(centerX, standY);
-            
-            // Update vinyl positions horizontally
+            // Update vinyl positions
             if (this.vinylLeft) {
-              this.vinylLeft.setPosition(centerX - spacingLeft, standY - heightOffset);
+              this.vinylLeft.setPosition(this.centerX - this.spacingLeft, this.standY - this.heightOffset);
             }
             if (this.vinylRight) {
-              this.vinylRight.setPosition(centerX + spacingRight, standY - heightOffset);
+              this.vinylRight.setPosition(this.centerX + this.spacingRight, this.standY - this.heightOffset);
             }
 
             // Restart floating animation
@@ -668,30 +696,32 @@ export default function GameComponent() {
             });
           }
 
-          // Update crowd positions
+          // Update crowd positions with unique variable names
           if (this.crowds.length > 0) {
-            const moveTowardsCenterOffset = 120;
-            const additionalCenterOffset = 75;
-            const fineAdjustmentOffset = 50; // Increased to 50px
+            const updatedBaseLeftX = (this.width / 4) + this.moveTowardsCenterOffset;
+            const updatedBaseRightX = ((this.width * 3) / 4) - this.moveTowardsCenterOffset;
             
-            // Calculate base positions
-            const baseLeftPos = (width / 4) + moveTowardsCenterOffset;
-            const baseRightPos = ((width * 3) / 4) - moveTowardsCenterOffset;
+            const updatedLeftSideX = updatedBaseLeftX + this.additionalCenterOffset - this.fineAdjustmentOffset;
+            const updatedRightSideX = updatedBaseRightX - this.additionalCenterOffset + this.fineAdjustmentOffset;
             
-            // Calculate final positions with all offsets
-            const finalLeftX = baseLeftPos + additionalCenterOffset - fineAdjustmentOffset;
-            const finalRightX = baseRightPos - additionalCenterOffset + fineAdjustmentOffset;
-            
-            // Update all crowds positions
             this.crowds.forEach((crowd, index) => {
               const isRightSide = index % 2 === 1;
               const rowNumber = Math.floor(index / 2);
-              const xPos = isRightSide ? finalRightX : finalLeftX;
-              const yPos = centerY + 50 + (rowNumber * 100);
+              const xPos = isRightSide ? updatedRightSideX : updatedLeftSideX;
+              const yPos = this.centerY + (this.height * 0.07) + (rowNumber * (this.height * 0.15));
               
               crowd.setPosition(xPos, yPos);
+              crowd.setScale(this.crowdScale);
             });
           }
+
+          // Update equalizer positions and scales
+          this.equalizers.forEach((equalizer, index) => {
+            const totalWidth = this.EQUALIZER_SPACING * (this.NUMBER_OF_EQUALIZERS - 1);
+            const startX = this.centerX - totalWidth / 2;
+            equalizer.setPosition(startX + (index * this.EQUALIZER_SPACING), this.centerY - this.bodyOffset + 40);
+            equalizer.setScale(this.equalizerScale);
+          });
         }
 
         private randomizeEqualizerAnimation() {
@@ -752,12 +782,20 @@ export default function GameComponent() {
         scale: {
           mode: Phaser.Scale.RESIZE,
           parent: 'phaser-container',
-          width: '100%',
-          height: '100%',
+          width: 1920,
+          height: 1080,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           expandParent: true,
+          min: {
+            width: 1280,
+            height: 720
+          },
+          max: {
+            width: 1920,
+            height: 1080
+          }
         },
-        backgroundColor: '#2d2d2d',
+        backgroundColor: '#000000',
         physics: {
           default: 'arcade',
           arcade: {
