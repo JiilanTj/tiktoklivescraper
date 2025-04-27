@@ -596,7 +596,7 @@ export default function TikTokLive() {
             <div className="space-y-2">
               {activities.map(user => (
                 <div 
-                  key={user.userId} 
+                  key={`${user.userId}_${user.timestamp.getTime()}`} 
                   className="flex items-center justify-between bg-navy-600 p-2 rounded"
                 >
                   <div>
