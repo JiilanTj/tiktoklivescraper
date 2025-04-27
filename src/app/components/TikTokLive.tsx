@@ -55,13 +55,25 @@ interface UserLabel {
   label: 'Naik ke atas panggung' | 'Baris 1' | 'Baris 2';
   lastActivity: Date;
   totalDiamonds?: number;
-  isCommenter?: boolean;
-  isLiker?: boolean;
 }
 
 type LabelPriority = {
   [K in UserLabel['label']]: number;
 };
+
+interface UserActivity {
+  username: string;
+  userId: string;
+  timestamp: Date;
+  type: 'chat' | 'like';
+}
+
+interface GiftUser {
+  username: string;
+  userId: string;
+  totalDiamonds: number;
+  lastGiftTime: Date;
+}
 
 const MAX_TOP_USERS = 10;
 
@@ -80,6 +92,8 @@ export default function TikTokLive() {
   const [processedUuids, setProcessedUuids] = useState<Set<string>>(new Set());
   const [giftAccumulations, setGiftAccumulations] = useState<GiftAccumulation[]>([]);
   const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
+  const [activities, setActivities] = useState<UserActivity[]>([]);
+  const [giftUsers, setGiftUsers] = useState<GiftUser[]>([]);
 
   // Refs untuk auto-scroll
   const chatRef = useRef<HTMLDivElement>(null);
@@ -133,6 +147,33 @@ export default function TikTokLive() {
       });
   };
 
+  // Fungsi untuk fetch data
+  const fetchData = async () => {
+    if (!isLive) return;
+
+    try {
+      // Fetch activities (Baris 2 dan 3)
+      const activitiesRes = await fetch('http://localhost:5000/api/users/activities');
+      const activitiesData = await activitiesRes.json();
+      setActivities(activitiesData);
+
+      // Fetch gift users (Baris 1)
+      const giftsRes = await fetch('http://localhost:5000/api/users/gifts');
+      const giftsData = await giftsRes.json();
+      setGiftUsers(giftsData);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    }
+  };
+
+  // Polling untuk update data setiap 3 detik
+  useEffect(() => {
+    if (!isLive) return;
+
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
+  }, [isLive]);
+
   useEffect(() => {
     // Initialize socket connection
     socket = io('http://localhost:5000');
@@ -145,11 +186,22 @@ export default function TikTokLive() {
     // Emit Baris 2 data whenever userLabels changes
     const baris2Users = userLabels
       .filter(user => user.label === 'Baris 2')
-      .slice(0, 28);
+      .slice(0, 28); // Keep this limit but emit immediately
     
-    if (baris2Users.length > 0) {
-      socket.emit('update-baris2', baris2Users);
-    }
+    // Emit Baris 1 data
+    const baris1Users = userLabels
+      .filter(user => user.label === 'Baris 1')
+      .map(user => ({
+        username: user.username,
+        userId: user.userId,
+        totalDiamonds: user.totalDiamonds || 0
+      }));
+    
+    // Emit updates immediately when there's any change
+    socket.emit('update-baris2', baris2Users);
+    socket.emit('update-baris1', baris1Users);
+    console.log('Current Baris 2 Users:', baris2Users);
+    console.log('Current Baris 1 Users:', baris1Users);
 
     socket.on('disconnect', () => {
       setIsConnected(false);
@@ -163,26 +215,6 @@ export default function TikTokLive() {
       if (chatRef.current) {
         chatRef.current.scrollTop = chatRef.current.scrollHeight;
       }
-
-      // Update user labels for commenters
-      setUserLabels(prev => {
-        const existingUser = prev.find(user => user.userId === data.userId);
-        if (existingUser) {
-          return prev.map(user =>
-            user.userId === data.userId
-              ? { ...user, lastActivity: new Date(), isCommenter: true }
-              : user
-          );
-        } else {
-          return [...prev, {
-            username: data.username,
-            userId: data.userId,
-            label: 'Baris 2' as const,
-            lastActivity: new Date(),
-            isCommenter: true
-          }];
-        }
-      });
     });
 
     socket.on('tiktok-gift', (data: Gift) => {
@@ -251,7 +283,24 @@ export default function TikTokLive() {
             };
           }
           
-          return updateUserLabels(prev, newUser);
+          const newLabels = updateUserLabels(prev, newUser);
+          
+          // Emit updates immediately for both Baris 1 and 2
+          const newBaris2Users = newLabels
+            .filter(user => user.label === 'Baris 2')
+            .slice(0, 28);
+          const newBaris1Users = newLabels
+            .filter(user => user.label === 'Baris 1')
+            .map(user => ({
+              username: user.username,
+              userId: user.userId,
+              totalDiamonds: user.totalDiamonds || 0
+            }));
+          
+          socket.emit('update-baris2', newBaris2Users);
+          socket.emit('update-baris1', newBaris1Users);
+          
+          return newLabels;
         });
       }
     });
@@ -261,21 +310,6 @@ export default function TikTokLive() {
       if (likesRef.current) {
         likesRef.current.scrollTop = likesRef.current.scrollHeight;
       }
-
-      // Update user labels for likers
-      setUserLabels(prev => {
-        const existingUser = prev.find(user => user.username === data.username);
-        if (!existingUser) {
-          return [...prev, {
-            username: data.username,
-            userId: `like_${data.username}`,
-            label: 'Baris 2' as const,
-            lastActivity: new Date(),
-            isLiker: true
-          }];
-        }
-        return prev;
-      });
     });
 
     socket.on('tiktok-member', (data) => {
@@ -300,7 +334,7 @@ export default function TikTokLive() {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [userLabels]);
 
   const connectToTikTok = async () => {
     if (!tiktokUsername) {
@@ -543,53 +577,39 @@ export default function TikTokLive() {
           Label Penonton
         </h2>
         <div className="space-y-4">
-          {/* Naik ke atas panggung */}
-          <div className="bg-navy-700 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-pink-400 mb-2">🎭 Naik ke atas panggung</h3>
-            <div className="space-y-2">
-              {userLabels
-                .filter(user => user.label === 'Naik ke atas panggung')
-                .map(user => (
-                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
-                    <span className="text-white">{user.username}</span>
-                    <span className="text-yellow-400">💎 {user.totalDiamonds}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-
           {/* Baris 1 */}
           <div className="bg-navy-700 rounded-lg p-4">
             <h3 className="text-lg font-semibold text-blue-400 mb-2">1️⃣ Baris 1</h3>
             <div className="space-y-2">
-              {userLabels
-                .filter(user => user.label === 'Baris 1')
-                .map(user => (
-                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
-                    <span className="text-white">{user.username}</span>
-                    {user.totalDiamonds && (
-                      <span className="text-yellow-400">💎 {user.totalDiamonds}</span>
-                    )}
-                  </div>
-                ))}
+              {giftUsers.map(user => (
+                <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
+                  <span className="text-white">{user.username}</span>
+                  <span className="text-yellow-400">💎 {user.totalDiamonds}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Baris 2 - Like dan Komen */}
+          {/* Baris 2 dan 3 */}
           <div className="bg-navy-700 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-green-400 mb-2">2️⃣ Like dan Komen</h3>
+            <h3 className="text-lg font-semibold text-green-400 mb-2">2️⃣ Baris 2 dan Baris 3</h3>
             <div className="space-y-2">
-              {userLabels
-                .filter(user => user.label === 'Baris 2')
-                .map(user => (
-                  <div key={user.userId} className="flex items-center justify-between bg-navy-600 p-2 rounded">
+              {activities.map(user => (
+                <div 
+                  key={user.userId} 
+                  className="flex items-center justify-between bg-navy-600 p-2 rounded"
+                >
+                  <div>
                     <span className="text-white">{user.username}</span>
-                    <span className="text-gray-400">
-                      {user.isCommenter && '💬'}
-                      {user.isLiker && '❤️'}
-                    </span>
+                    <div className="text-xs text-gray-500">
+                      {new Date(user.timestamp).toLocaleTimeString()}
+                    </div>
                   </div>
-                ))}
+                  <span className="text-gray-400">
+                    {user.type === 'chat' ? '💬' : '❤️'}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
